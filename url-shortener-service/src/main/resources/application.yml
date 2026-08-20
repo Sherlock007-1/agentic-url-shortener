@@ -1,0 +1,35 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: url-shortener-service
+  datasource:
+    url: ${SHORTENER_DB_URL:jdbc:postgresql://localhost:5432/agentic}
+    username: ${SHORTENER_DB_USERNAME:agentic}
+    password: ${SHORTENER_DB_PASSWORD:agentic}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: shortener
+  flyway:
+    enabled: true
+    schemas: shortener
+    default-schema: shortener
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

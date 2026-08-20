@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: orchestrator-service
+  datasource:
+    url: ${ORCHESTRATOR_DB_URL:jdbc:postgresql://localhost:5432/agentic}
+    username: ${ORCHESTRATOR_DB_USERNAME:agentic}
+    password: ${ORCHESTRATOR_DB_PASSWORD:agentic}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: orchestrator
+  flyway:
+    enabled: true
+    schemas: orchestrator
+    default-schema: orchestrator
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
