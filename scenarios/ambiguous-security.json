@@ -1,0 +1,62 @@
+{
+  "key": "ambiguous-security",
+  "name": "Ambiguous: make shortened URLs more secure",
+  "type": "AMBIGUOUS",
+  "requirement": "Make shortened URLs more secure.",
+  "whyThisType": "The requirement names a goal, not a change. Input validation, authentication, rate limiting and short-code entropy are different changes with different risks, so any autonomous choice would be a guess.",
+  "clarificationQuestion": "\"Secure\" can mean several different changes here. Which security improvement is intended: (a) rejecting unsafe URL schemes / requiring valid http(s) destinations, (b) authenticating the management API, (c) rate limiting redirects, or (d) making short codes unguessable? Please state the intended behaviour.",
+  "exampleHumanAnswer": "Reject unsafe URL schemes and require HTTP or HTTPS URLs with a valid host.",
+  "expectedGraphVersionTransition": {
+    "from": 1,
+    "to": 2,
+    "note": "Version 1 stays persisted and queryable via GET /api/workflows/{id}/graph?version=1; replanning adds a version, it never overwrites one."
+  },
+  "expectedOrchestrationBehaviour": [
+    "requirement-analysis runs and completes.",
+    "Before codebase-analysis the clarification gate recognises the ambiguity.",
+    "The workflow is parked in AWAITING_CLARIFICATION with a persisted question.",
+    "A CLARIFICATION decision records why the orchestrator stopped instead of guessing.",
+    "A human answers via POST /api/workflows/{id}/clarifications/{clarificationId}/answer with replan=true.",
+    "The answer becomes the requirement text and graph version 2 is created; the run returns to READY.",
+    "A REPLAN decision and REPLAN_STARTED/GRAPH_CREATED/REPLAN_COMPLETED audit events record the lineage.",
+    "Version 2 is started by a human and runs to completion under the clarified requirement."
+  ],
+  "expectedOutcomeOfVersion2": {
+    "codebaseAnalysis": "Records that the clarified behaviour already exists in url-shortener-service (UrlValidator + ShortUrlService.create + HTTP 400 handling).",
+    "implementation": "Records 'no code change required' rather than duplicating the existing validation.",
+    "note": "The scenario demonstrates ambiguity handling, clarification, replanning, history and controlled autonomy. It does not claim the validation feature was invented now - it already existed in the baseline, and discovering that is the point."
+  },
+  "expectedAffectedComponents": [
+    "orchestrator-service/.../governance/AmbiguityDetector.java (narrow, scenario-specific triggering)",
+    "orchestrator-service/.../governance/ClarificationGateService.java (gate in front of codebase-analysis)",
+    "orchestrator-service/.../engine/WorkflowTransitionService.java (gate is checked while claiming tasks)",
+    "orchestrator-service/.../agent/deterministic/KnownCapabilities.java",
+    "orchestrator-service/.../agent/deterministic/CodebaseAnalysisAgent.java",
+    "orchestrator-service/.../agent/deterministic/ImplementationAgent.java",
+    "reused unchanged: ClarificationService, ReplanService, GovernanceWorkflowService, AuditService"
+  ],
+  "validationExpectations": [
+    "The raw ambiguous requirement does not run to completion autonomously.",
+    "A clarification request is persisted and readable via the API.",
+    "The workflow status is AWAITING_CLARIFICATION.",
+    "The supplied answer is persisted with its author.",
+    "Replanning creates graph version 2 while version 1 stays queryable.",
+    "Decision and audit lineage explain why the plan changed.",
+    "Version 2 runs to COMPLETED under the clarified requirement.",
+    "An unambiguous requirement is never parked by the gate."
+  ],
+  "evidence": {
+    "tests": [
+      "orchestrator-service: AmbiguityDetectorTest (only known ambiguity patterns trigger)",
+      "orchestrator-service: AmbiguousRequirementScenarioIntegrationTest (end-to-end park -> answer -> replan -> v2 completes)",
+      "orchestrator-service: KnownCapabilitiesTest",
+      "orchestrator-service: ClarificationGateIntegrationTest and ReplanIntegrationTest (the reused mechanisms)"
+    ]
+  },
+  "intentionalBoundaries": [
+    "Ambiguity detection is a short, explicit list of known phrasings - not a general requirement classifier.",
+    "Unambiguous requirements are never parked, so the gate does not become a permanent stop.",
+    "The question is asked at most once per workflow: answering it releases the run, it never loops.",
+    "The orchestrator never picks an interpretation on its own."
+  ]
+}

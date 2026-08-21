@@ -38,3 +38,7 @@ shortener:
   base-url: ${SHORTENER_BASE_URL:http://localhost:8081}
   code-length: 7
   max-url-length: 2048
+  # Brownfield increment: bounded, collision-safe short-code generation. A create
+  # request generates and persists at most this many codes before it fails with a
+  # conflict. The unique constraint stays the final safety boundary.
+  max-code-generation-attempts: 3

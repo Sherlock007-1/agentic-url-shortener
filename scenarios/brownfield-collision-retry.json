@@ -1,0 +1,46 @@
+{
+  "key": "brownfield-collision-retry",
+  "name": "Brownfield: collision-safe short-code generation",
+  "type": "BROWNFIELD",
+  "requirement": "Make short-code generation collision-safe by retrying generation up to three times before failing.",
+  "whyThisType": "The baseline already generated and persisted short codes and deliberately surfaced a unique-constraint collision as a conflict without retrying. The increment modifies that existing create path instead of adding an isolated subsystem.",
+  "baselineBehaviour": "ShortUrlService.create generated one code, saved it, and let the short_urls unique constraint fail the request.",
+  "changedBehaviour": "Up to three generate-and-insert attempts. A short-code duplicate is retried with a freshly generated code; anything else fails immediately. After three collisions the request fails with HTTP 409.",
+  "expectedOrchestrationBehaviour": [
+    "Requirement is unambiguous, so the clarification gate does not trigger.",
+    "codebase-analysis identifies the existing create path as the change site.",
+    "PRE_IMPLEMENTATION approval is required before the existing behaviour is modified.",
+    "tests, security and documentation run in parallel, joined by validation.",
+    "FINAL approval is required before COMPLETED."
+  ],
+  "expectedAffectedComponents": [
+    "url-shortener-service/.../service/ShortUrlService.java (bounded retry loop)",
+    "url-shortener-service/.../service/ShortUrlWriter.java (one REQUIRES_NEW transaction per attempt)",
+    "url-shortener-service/.../service/ShortCodeCollisions.java (narrow duplicate-code classifier)",
+    "url-shortener-service/.../exception/ShortCodeCollisionException.java",
+    "url-shortener-service/.../api/ShortUrlExceptionHandler.java (HTTP 409)",
+    "url-shortener-service/.../config/ShortenerProperties.java (maxCodeGenerationAttempts, default 3)",
+    "url-shortener-service/src/main/resources/application.yml"
+  ],
+  "validationExpectations": [
+    "One collision then a free code -> 201 Created.",
+    "Two collisions then a free code -> 201 Created.",
+    "Three collisions -> HTTP 409 after exactly three attempts, never a fourth.",
+    "An unrelated integrity violation (for example a not-null violation) is never retried.",
+    "A free code on the first attempt behaves exactly like the baseline."
+  ],
+  "evidence": {
+    "tests": [
+      "url-shortener-service: ShortUrlServiceCollisionRetryTest (deterministic generator + scripted writer, 5 tests)",
+      "url-shortener-service: ShortCodeCollisionsTest (only a duplicate short code may be retried, 5 tests)",
+      "url-shortener-service: ShortCodeCollisionRetryIntegrationTest (real PostgreSQL unique constraint, 4 tests)",
+      "url-shortener-service: ShortUrlRepositoryIntegrationTest.shortCodeIsUniqueAtTheDatabaseLevel"
+    ]
+  },
+  "intentionalBoundaries": [
+    "The database unique constraint remains the final safety boundary; the retry only avoids failing a request a new code would fix.",
+    "The retry is bounded and never loops; the attempt budget is configuration, not a magic number in code.",
+    "Determinism in tests comes from stubbing the generator, never from waiting for a real random collision.",
+    "This business-level retry is unrelated to the orchestrator's agent retry policy (orchestrator.governance.max-task-attempts)."
+  ]
+}

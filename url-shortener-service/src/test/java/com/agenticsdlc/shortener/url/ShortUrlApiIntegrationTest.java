@@ -38,10 +38,15 @@ class ShortUrlApiIntegrationTest extends AbstractPostgresIntegrationTest {
 	private ShortUrlRepository repository;
 
 	@Autowired
+	private com.agenticsdlc.shortener.url.repository.ClickEventRepository clickEventRepository;
+
+	@Autowired
 	private ObjectMapper objectMapper;
 
 	@BeforeEach
 	void cleanDatabase() {
+		// Click events reference short URLs, so they have to go first.
+		clickEventRepository.deleteAll();
 		repository.deleteAll();
 	}
 
@@ -193,6 +198,7 @@ class ShortUrlApiIntegrationTest extends AbstractPostgresIntegrationTest {
 		mockMvc.perform(get("/v3/api-docs"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.paths['/api/urls']").exists())
-				.andExpect(jsonPath("$.paths['/api/urls/{shortCode}']").exists());
+				.andExpect(jsonPath("$.paths['/api/urls/{shortCode}']").exists())
+				.andExpect(jsonPath("$.paths['/api/urls/{shortCode}/analytics']").exists());
 	}
 }

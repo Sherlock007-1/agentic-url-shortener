@@ -1,155 +1,204 @@
 # agentic-url-shortener
 
-Agentic software engineering prototype: an SDLC orchestration service that drives a URL shortener
-service through requirement understanding, decomposition, implementation, validation and
-documentation under human oversight.
+An agentic software-engineering prototype: an **SDLC orchestration service** that drives a **URL
+shortener service** through requirement understanding, decomposition, implementation, validation and
+documentation — under explicit human oversight.
 
-## Architecture (two modules)
+The point of the prototype is **controlled autonomy**: the orchestrator does a lot on its own, but
+every step is persisted, explainable and stoppable, and it asks instead of guessing.
+
+## Architecture (two services, one database)
 
 | Module | Port | Purpose |
 | --- | --- | --- |
-| `orchestrator-service` | 8080 | Agentic SDLC orchestration (persisted workflow state, agents, governance, metrics) |
-| `url-shortener-service` | 8081 | The product under development: short URL creation, redirect, expiration, analytics |
+| `orchestrator-service` | 8080 | Agentic SDLC orchestration: persisted DAG, agents, governance, recovery, metrics |
+| `url-shortener-service` | 8081 | The product under development: create, redirect, expire, disable, click analytics |
 
-Both are independently runnable Spring Boot applications in a single Maven multi-module repository,
-backed by one PostgreSQL instance using separate schemas (`orchestrator`, `shortener`).
+Both are independently runnable Spring Boot applications in one Maven multi-module repository,
+backed by a single PostgreSQL instance using separate schemas (`orchestrator`, `shortener`).
+
+Detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)
 
 ## Technologies
 
-- Java 21, Spring Boot 3.3.x
-- Spring Web, Spring Data JPA, Bean Validation, Spring Boot Actuator
-- PostgreSQL + Flyway migrations
-- springdoc-openapi (Swagger UI)
-- JUnit 5, Spring Boot Test, Testcontainers
+Java 21 · Spring Boot 3.3.x (Web, Data JPA, Validation, Actuator) · PostgreSQL 16 · Flyway ·
+springdoc-openapi (Swagger UI) · JUnit 5 · Testcontainers · Maven
 
-## Local startup
+## Prerequisites
 
-1. Start PostgreSQL:
+- **JDK 21** (`java -version` must report 21)
+- **Docker Desktop**, running — required both for `docker compose` and for the Testcontainers
+  integration tests
+- No LLM API key, no cloud account and no external service is required
+
+## Setup
+
+1. **Start PostgreSQL**
 
    ```
    docker compose up -d
    ```
 
-2. Build from the repository root:
+2. **Build and test everything from the repository root**
 
    ```
    mvnw.cmd clean verify        # Windows
    ./mvnw clean verify          # Linux / macOS
    ```
 
-3. Run the services (separate terminals, or from STS):
+   The integration tests start real PostgreSQL containers, so Docker must be running.
+
+3. **Run the services** (two terminals, or from your IDE)
 
    ```
    mvnw.cmd -pl orchestrator-service spring-boot:run
    mvnw.cmd -pl url-shortener-service spring-boot:run
    ```
 
-4. Useful endpoints:
+4. **Open Swagger** — this is the operator console for the demo
 
-   - Orchestrator: http://localhost:8080/swagger-ui.html and http://localhost:8080/actuator/health
-   - URL shortener: http://localhost:8081/swagger-ui.html and http://localhost:8081/actuator/health
+   - Orchestrator: <http://localhost:8080/swagger-ui.html> · health: <http://localhost:8080/actuator/health>
+   - URL shortener: <http://localhost:8081/swagger-ui.html> · health: <http://localhost:8081/actuator/health>
 
 Database settings default to local development values and can be overridden with environment
 variables (`ORCHESTRATOR_DB_URL`, `ORCHESTRATOR_DB_USERNAME`, `ORCHESTRATOR_DB_PASSWORD`,
 `SHORTENER_DB_URL`, `SHORTENER_DB_USERNAME`, `SHORTENER_DB_PASSWORD`). No credentials are committed.
 
-## URL shortener API (baseline)
+## URL shortener API
 
 | Method | Path | Behaviour |
 | --- | --- | --- |
-| `POST` | `/api/urls` | Create a short URL (`400` for an invalid destination URL) |
-| `GET` | `/{shortCode}` | `302` redirect for an active link, `404` unknown, `410` expired/disabled |
+| `POST` | `/api/urls` | Create a short URL (`400` invalid destination, `409` if three code generations all collide) |
+| `GET` | `/{shortCode}` | `302` redirect for an active link, `404` unknown, `410` expired/disabled. A successful redirect records one click |
 | `GET` | `/api/urls/{shortCode}` | Metadata lookup (`404` unknown) |
+| `GET` | `/api/urls/{shortCode}/analytics` | Click analytics: `totalClicks`, `lastClickedAt`, recent clicks (`404` unknown) |
 | `DELETE` | `/api/urls/{shortCode}` | Soft disable (`204`, `404` unknown); the row is kept so the code is never reused |
 
-Destination URLs must be valid absolute `http`/`https` URIs with a host and at most 2048
-characters; unsafe schemes such as `javascript:`, `file:` and `data:` are rejected. This is basic
-input validation, not SSRF or open-redirect protection.
+Destination URLs must be absolute `http`/`https` URIs with a host and at most 2048 characters;
+schemes such as `javascript:`, `file:` and `data:` are rejected. This is input validation, not SSRF
+or open-redirect protection.
 
-## Orchestrator API (core engine)
+Analytics store only the click time and the optional `Referer` — **no IP address, user agent, device
+fingerprint or geo-location**.
+
+## Orchestrator API
 
 | Method | Path | Behaviour |
 | --- | --- | --- |
 | `POST` | `/api/requirements` | Creates requirement + workflow run + persisted graph version 1 (`READY`) |
-| `POST` | `/api/workflows/{id}/start` | Starts execution (idempotent while `RUNNING`, `409` when not startable) |
+| `POST` | `/api/workflows/{id}/start` | Starts execution (idempotent while `RUNNING`) |
 | `GET` | `/api/workflows/{id}` | Workflow summary, status and safe-stop reason |
 | `GET` | `/api/workflows/{id}/graph` | Graph of the current version (`?version=N` for an earlier one) |
-| `GET` | `/api/workflows/{id}/graph/versions` | History of graph versions (replanning adds, never overwrites) |
-| `GET` | `/api/workflows/{id}/tasks` | Task details of the current version including persisted context and attempt count |
-| `GET` | `/api/workflows/{id}/decisions` | Recorded decisions (planning, architecture, approvals, fallback, replan) |
+| `GET` | `/api/workflows/{id}/graph/versions` | Graph version history (replanning adds, never overwrites) |
+| `GET` | `/api/workflows/{id}/tasks` | Task details including persisted cross-stage context |
+| `GET` | `/api/workflows/{id}/decisions` | Decision lineage |
 | `GET` | `/api/workflows/{id}/audit` | Ordered audit history |
-
-The SDLC graph is persisted (not hard-coded control flow):
-`requirement-analysis → codebase-analysis → planning → architecture → implementation`,
-then `tests`, `security` and `documentation` in parallel, joined by `validation`.
-Agents are provider-neutral (`LlmClient`); the bundled implementations are deterministic and
-require no API credentials.
-
-## Governance, controlled autonomy and recovery
-
-| Method | Path | Behaviour |
-| --- | --- | --- |
-| `GET` | `/api/workflows/{id}/approvals` | Persisted approval gates and their status |
-| `POST` | `/api/workflows/{id}/approvals/{approvalId}/approve` | Human approval; the run resumes from persisted state |
-| `POST` | `/api/workflows/{id}/approvals/{approvalId}/reject` | Human rejection; the run is `SAFE_STOPPED` with a reason |
+| `GET` | `/api/workflows/{id}/approvals` | Approval gates and their status |
+| `POST` | `/api/workflows/{id}/approvals/{approvalId}/approve` \| `/reject` | Human decision; reject ⇒ `SAFE_STOPPED` |
 | `GET` | `/api/workflows/{id}/clarifications` | Questions the orchestrator asked instead of guessing |
 | `POST` | `/api/workflows/{id}/clarifications/{clarificationId}/answer` | Answer (optionally `replan: true`) |
-| `POST` | `/api/workflows/{id}/replan` | Creates the next graph version from a changed requirement |
-| `GET` | `/api/workflows/{id}/replans` | Replan lineage (from/to version, reason, requirement change) |
-| `GET` | `/api/workflows/{id}/snapshots` | Workspace snapshots and rollback outcome |
-| `POST` | `/api/workflows/{id}/snapshots/{snapshotId}/rollback` | Restores the workspace from a snapshot |
+| `POST` | `/api/workflows/{id}/replan` · `GET` `/replans` | Create the next graph version · replan lineage |
+| `GET` | `/api/workflows/{id}/snapshots` · `POST` `.../rollback` | Workspace snapshots and restore |
 | `GET` | `/api/metrics` | Metrics derived from persisted records |
+| `GET` | `/api/scenarios` · `/{key}` · `POST` `/{key}/start` | The three assessment scenarios, reproducibly |
 
-Swagger is the operator console for this assessment: there is no authentication and no UI, and the
-orchestrator never approves anything on its own.
+The SDLC graph is **persisted data, not hard-coded control flow**:
 
-**Workflow states**: `CREATED → PLANNING → READY → RUNNING`, plus `WAITING_FOR_APPROVAL`,
-`AWAITING_CLARIFICATION`, `RETRYING`, `REPLANNING`, `ROLLING_BACK` and the terminal states
-`COMPLETED`, `FAILED` and `SAFE_STOPPED`. Task states add `RETRYING` and `WAITING_FOR_APPROVAL`.
-Every transition is persisted, validated and audited.
+```
+requirement-analysis -> codebase-analysis -> planning -> architecture -> implementation
+                                                                             |
+                                             +-------------+----------------+
+                                             v             v                v
+                                           tests       security     documentation
+                                             +-------------+----------------+
+                                                           v
+                                                       validation   (join)
+```
 
-**Approval gates** (`orchestrator.governance.approval-gates`): `PRE_IMPLEMENTATION` blocks the
-implementation task after architecture completes, `FINAL` blocks the transition to `COMPLETED`
-after validation. Approvals are per graph version, so a replan must be approved again.
+## Demo sequence
 
-**Bounded retries**: only failures classified retryable (`RetryableAgentException` or an attempt
-timeout) are repeated, at most `orchestrator.governance.max-task-attempts` times (default 3). Every
-attempt is persisted in `task_attempts`. This is *not* the engine's optimistic-locking retry, which
-is a concurrency mechanism and is never counted as an agent retry.
+A reviewer can follow this end to end; no frontend is needed.
 
-**Fallback and safe stop**: after the retries are exhausted an explicitly approved `AgentFallback`
-may run once. Its result is marked `[FALLBACK/DEGRADED]`, gets its own decision record and is never
-presented as an equivalent successful primary run. Without a fallback, or if it fails, the run is
-`SAFE_STOPPED` with an audited reason. No fallback is registered by default.
+1. `docker compose up -d`
+2. Run `orchestrator-service` (8080) and `url-shortener-service` (8081)
+3. Open <http://localhost:8080/swagger-ui.html>
+4. `GET /api/scenarios` — see the three scenarios and where their evidence lives
+5. `POST /api/scenarios/greenfield-click-analytics/start` — note the returned `workflowId`
+6. `GET /api/workflows/{id}/graph`, `/tasks`, `/audit` — the persisted DAG and its history
+7. `GET /api/workflows/{id}` — status is `WAITING_FOR_APPROVAL`: the **pre-implementation gate**
+   blocked the implementation task. Nothing proceeds without a human.
+8. `GET /api/workflows/{id}/approvals` then `POST .../approvals/{approvalId}/approve`
+9. `GET /api/workflows/{id}/tasks` — `tests`, `security` and `documentation` ran **in parallel**
+   (same predecessor, overlapping start times), joined by `validation`
+10. `GET /api/workflows/{id}` — blocked again at the **final gate**
+11. Approve the final gate
+12. `GET /api/workflows/{id}` (`COMPLETED`), `/decisions`, `/audit`, and `GET /api/metrics`
+13. **Ambiguous scenario**: `POST /api/scenarios/ambiguous-security/start` →
+    status becomes `AWAITING_CLARIFICATION` → `GET /api/workflows/{id}/clarifications` →
+    `POST .../clarifications/{clarificationId}/answer` with
+    `{"answer":"Reject unsafe URL schemes and require HTTP or HTTPS URLs with a valid host.","answeredBy":"you","replan":true}`
+    → `GET /api/workflows/{id}/graph/versions` shows versions **1 and 2**, version 1 still queryable →
+    `POST /api/workflows/{id}/start` runs version 2 → `/decisions` records that the behaviour already
+    exists and that **no duplicate implementation is required**
+14. **Greenfield analytics** on <http://localhost:8081/swagger-ui.html>: `POST /api/urls`, follow
+    `GET /{shortCode}` a few times, then `GET /api/urls/{shortCode}/analytics`
+15. **Brownfield collision retry**: see `ShortUrlServiceCollisionRetryTest`,
+    `ShortCodeCollisionRetryIntegrationTest` and `ShortCodeCollisionsTest`
 
-**Autonomy boundaries**: attempts per task, wall-clock duration per workflow
-(`max-workflow-duration`) and execution time per attempt (`task-timeout`). Exceeding one leads to a
-controlled safe stop, never to unbounded work. Token accounting is out of scope for deterministic
-agents.
+Full walkthrough: [docs/SCENARIOS.md](docs/SCENARIOS.md)
 
-**Change policy**: `ChangePolicyGuard` restricts file mutations to
-`{workspace-root}/{workflowId}/workspace`, rejects path traversal and refuses credential/secret
-files and VCS metadata. It is an application-level guardrail, **not** a security sandbox.
+## Scenarios
 
-**Rollback**: `runs/{workflowId}/workspace` can be copied into `runs/{workflowId}/snapshots/{id}`
-before a mutating stage and restored from it. Plain directory copy - no Git, no artefact store, no
-distributed storage.
+| Key | Type | Requirement |
+| --- | --- | --- |
+| `greenfield-click-analytics` | Greenfield | "Add click analytics for shortened URLs." |
+| `brownfield-collision-retry` | Brownfield | "Make short-code generation collision-safe by retrying generation up to three times before failing." |
+| `ambiguous-security` | Ambiguous | "Make shortened URLs more secure." |
 
-**Metrics formulas**: success rate = `COMPLETED / (COMPLETED + FAILED + SAFE_STOPPED)`; agent
-retries = attempts with `attempt_no > 1`; rollbacks = snapshots with `rollback_status = COMPLETED`;
-MTTR = mean of (first successful attempt − first failed attempt) per recovered task; latency =
-mean/max of `completedAt − startedAt` over completed runs. Metrics without samples are `null`, never
-invented.
+Readable fixtures live in [`scenarios/`](scenarios); the narrative is in
+[docs/SCENARIOS.md](docs/SCENARIOS.md).
 
-## Status
+## Honest scope
 
-Implementation is intentionally incremental. Implemented so far: the URL shortener baseline
-(creation, redirect, metadata, soft disable, expiration), the orchestration core (persisted DAG,
-parallel execution with join, agent abstraction, cross-stage context, decision lineage, audit trail)
-and the governance/recovery layer (approval and clarification gates, bounded retries, approved
-fallback, safe stop, autonomy budgets, change-policy guardrail, workspace snapshot/rollback,
-replanning into new graph versions and metrics).
+- The runtime agents are **deterministic**, not live LLM calls. `LlmClient` is a provider-neutral
+  extension point; `DeterministicLlmClient` is the bundled implementation. **No API key is required.**
+- **GitHub Copilot was the development assistant** for this repository. It is **not** part of the
+  running system and **not** the runtime agent system. See [docs/AI_USAGE.md](docs/AI_USAGE.md).
+- **No agent edits the repository at runtime.** Scenario code changes are the change produced and
+  validated during development; the implemented code, migrations and passing tests are the evidence,
+  and the workflow run is the evidence of how that change was governed.
+- One orchestrator instance, no authentication, no UI beyond Swagger.
 
-Deferred on purpose: the greenfield click-analytics, brownfield short-code collision and ambiguous
-"security" scenarios, source-code mutating agents, a real external LLM provider, UI, authentication
-and multi-instance orchestration.
+## Limitations
+
+Single orchestrator instance (JVM lock, not distributed locking) · deterministic agents by default ·
+no external LLM configured · no authentication · filesystem snapshots rather than an artefact store ·
+the change-policy guard is an application-level guardrail, not a sandbox · ambiguity detection and
+known-capability knowledge are curated allow-lists, not inference · analytics and metrics
+intentionally minimal.
+
+Full list and what production would need: [docs/RISKS_AND_TRADEOFFS.md](docs/RISKS_AND_TRADEOFFS.md)
+
+## Validation
+
+```
+orchestrator-service   Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
+url-shortener-service  Tests run:  69, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+Integration tests run against real PostgreSQL 16 via Testcontainers — no H2 and no in-memory
+substitute. See [docs/TESTING.md](docs/TESTING.md).
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Two services, persistence, agent abstraction, scheduling, why single-instance |
+| [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) | DAG, parallelism, join, context, decisions, gates, retries, rollback, replanning, audit, metrics |
+| [docs/SCENARIOS.md](docs/SCENARIOS.md) | The three scenarios: requirement → workflow → decision → change → evidence |
+| [docs/TESTING.md](docs/TESTING.md) | Unit vs Testcontainers tests, what each important test proves, exact build command |
+| [docs/TRACEABILITY.md](docs/TRACEABILITY.md) | Capability → concrete class / endpoint / test / doc |
+| [docs/RISKS_AND_TRADEOFFS.md](docs/RISKS_AND_TRADEOFFS.md) | Limitations and what production would need |
+| [docs/ENGINEERING_SUMMARY.md](docs/ENGINEERING_SUMMARY.md) | Reviewer-facing summary of what was built and why |
+| [docs/AI_USAGE.md](docs/AI_USAGE.md) | How GitHub Copilot was used during development |
