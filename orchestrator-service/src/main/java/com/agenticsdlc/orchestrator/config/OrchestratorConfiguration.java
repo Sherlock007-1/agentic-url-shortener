@@ -19,9 +19,17 @@ public class OrchestratorConfiguration {
 
 	public static final String TASK_EXECUTOR = "orchestratorTaskExecutor";
 
+	public static final String AGENT_TIMEOUT_EXECUTOR = "agentTimeoutExecutor";
+
 	@Bean
 	public Clock clock() {
 		return Clock.systemUTC();
+	}
+
+	/** Convenience bean so governance components inject only what they need. */
+	@Bean
+	public GovernanceProperties governanceProperties(OrchestratorProperties properties) {
+		return properties.governance();
 	}
 
 	/**
@@ -38,5 +46,21 @@ public class OrchestratorConfiguration {
 		executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
 		executor.initialize();
 		return executor;
+	}
+
+	/**
+	 * Separate pool used only to bound a single agent attempt with a timeout.
+	 *
+	 * <p>Kept apart from {@link #TASK_EXECUTOR} on purpose: a hung agent must not be
+	 * able to consume the workers that drive the rest of the graph. Threads are
+	 * daemons so a stuck agent cannot keep the JVM alive.
+	 */
+	@Bean(name = AGENT_TIMEOUT_EXECUTOR, destroyMethod = "shutdownNow")
+	public java.util.concurrent.ExecutorService agentTimeoutExecutor() {
+		return java.util.concurrent.Executors.newCachedThreadPool(runnable -> {
+			Thread thread = new Thread(runnable, "agent-attempt-" + java.util.UUID.randomUUID());
+			thread.setDaemon(true);
+			return thread;
+		});
 	}
 }

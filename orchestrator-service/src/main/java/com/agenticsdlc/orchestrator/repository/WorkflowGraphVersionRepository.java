@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface WorkflowGraphVersionRepository extends JpaRepository<WorkflowGraphVersion, UUID> {
 
 	Optional<WorkflowGraphVersion> findByWorkflowRunIdAndVersion(UUID workflowRunId, int version);
+
+	java.util.List<WorkflowGraphVersion> findByWorkflowRunIdOrderByVersionAsc(UUID workflowRunId);
 }

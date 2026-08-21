@@ -48,9 +48,22 @@ public class WorkflowGraphService {
 	 */
 	@Transactional(propagation = Propagation.MANDATORY)
 	public WorkflowGraphVersion createInitialGraph(UUID workflowRunId) {
+		return createGraph(workflowRunId, SdlcWorkflowGraphTemplate.VERSION, SdlcWorkflowGraphTemplate.DESCRIPTION);
+	}
+
+	/**
+	 * Materialises a new version of the graph for a workflow.
+	 *
+	 * <p>Previous versions are never touched: replanning adds rows, it does not
+	 * overwrite history.
+	 *
+	 * @return the persisted graph version
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public WorkflowGraphVersion createGraph(UUID workflowRunId, int version, String description) {
 		Instant now = clock.instant();
-		WorkflowGraphVersion graphVersion = graphVersionRepository.save(new WorkflowGraphVersion(workflowRunId,
-				SdlcWorkflowGraphTemplate.VERSION, SdlcWorkflowGraphTemplate.DESCRIPTION, now));
+		WorkflowGraphVersion graphVersion = graphVersionRepository
+				.save(new WorkflowGraphVersion(workflowRunId, version, description, now));
 
 		List<TaskDefinition> definitions = SdlcWorkflowGraphTemplate.tasks();
 		Map<String, UUID> taskIdsByKey = new HashMap<>();

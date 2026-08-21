@@ -11,6 +11,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class TestDatabase {
 
 	private static final String[] TABLES = {
+			"orchestrator.workflow_replans",
+			"orchestrator.workspace_snapshots",
+			"orchestrator.task_attempts",
+			"orchestrator.approvals",
+			"orchestrator.clarification_requests",
 			"orchestrator.audit_events",
 			"orchestrator.decisions",
 			"orchestrator.agent_executions",

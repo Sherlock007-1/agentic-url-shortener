@@ -41,3 +41,15 @@ orchestrator:
   queue-capacity: 100
   scheduler-enabled: true
   poll-interval-ms: 500
+  governance:
+    # Human approval gates enforced by the scheduler. Swagger is the operator UI.
+    approval-gates: PRE_IMPLEMENTATION,FINAL
+    # Bounded agent/task attempts (retries = max-task-attempts - 1).
+    # This is NOT the engine's optimistic-locking retry, which is unbounded-safe
+    # and never counted as an agent retry.
+    max-task-attempts: 3
+    # Autonomy boundaries: exceeding either safe-stops the run with audit evidence.
+    max-workflow-duration: PT10M
+    task-timeout: PT2M
+    # Root of runs/{workflowId}/workspace and runs/{workflowId}/snapshots.
+    workspace-root: runs

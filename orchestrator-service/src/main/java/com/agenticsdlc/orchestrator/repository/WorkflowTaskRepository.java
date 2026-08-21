@@ -12,5 +12,12 @@ public interface WorkflowTaskRepository extends JpaRepository<WorkflowTask, UUID
 
 	List<WorkflowTask> findByGraphVersionIdOrderBySequenceNoAsc(UUID graphVersionId);
 
+	/**
+	 * Unique per graph version. Prefer this over
+	 * {@link #findByWorkflowRunIdAndTaskKey(UUID, String)} once a workflow can own
+	 * several graph versions (replanning).
+	 */
+	Optional<WorkflowTask> findByGraphVersionIdAndTaskKey(UUID graphVersionId, String taskKey);
+
 	Optional<WorkflowTask> findByWorkflowRunIdAndTaskKey(UUID workflowRunId, String taskKey);
 }
