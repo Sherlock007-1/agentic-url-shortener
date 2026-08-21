@@ -3,8 +3,9 @@ package com.agenticsdlc.orchestrator.domain;
 /**
  * Lifecycle of a single task in the workflow graph.
  *
- * <p>Later increments add {@code RETRYING}, {@code WAITING_FOR_APPROVAL} and
- * {@code SKIPPED} without changing the meaning of the states below.
+ * <p>{@link #RETRYING} and {@link #WAITING_FOR_APPROVAL} are non-terminal, so a
+ * workflow is never finalised while a task is being retried or is parked in front
+ * of a human approval gate.
  */
 public enum TaskStatus {
 
@@ -16,6 +17,12 @@ public enum TaskStatus {
 
 	/** Claimed by the engine and currently executing. */
 	RUNNING,
+
+	/** A retryable agent failure occurred and another bounded attempt is scheduled. */
+	RETRYING,
+
+	/** Eligible for dispatch but blocked by an unresolved human approval gate. */
+	WAITING_FOR_APPROVAL,
 
 	/** Finished successfully. */
 	COMPLETED,

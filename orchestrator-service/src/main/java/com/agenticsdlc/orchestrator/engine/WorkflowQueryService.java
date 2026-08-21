@@ -46,6 +46,19 @@ public class WorkflowQueryService {
 		return taskRepository.findByWorkflowRunIdOrderBySequenceNoAsc(workflowRunId);
 	}
 
+	/** Tasks of one graph version; earlier versions stay queryable after a replan. */
+	@Transactional(readOnly = true)
+	public List<WorkflowTask> tasks(UUID workflowRunId, int version) {
+		WorkflowGraphVersion graphVersion = graphVersion(workflowRunId, version);
+		return taskRepository.findByGraphVersionIdOrderBySequenceNoAsc(graphVersion.getId());
+	}
+
+	/** All persisted graph versions of a workflow, oldest first. */
+	@Transactional(readOnly = true)
+	public List<WorkflowGraphVersion> graphVersions(UUID workflowRunId) {
+		return graphVersionRepository.findByWorkflowRunIdOrderByVersionAsc(workflowRunId);
+	}
+
 	@Transactional(readOnly = true)
 	public WorkflowGraphVersion graphVersion(UUID workflowRunId, int version) {
 		return graphVersionRepository.findByWorkflowRunIdAndVersion(workflowRunId, version)

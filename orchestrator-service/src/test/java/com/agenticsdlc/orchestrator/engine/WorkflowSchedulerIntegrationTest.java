@@ -22,12 +22,17 @@ import org.springframework.test.context.TestPropertySource;
  * which is exactly the state an orchestrator instance would find after a restart.
  * This is the single test class that enables the scheduler, so no other cached
  * Spring context can interfere with the shared database.
+ *
+ * <p>The context is closed after this class: a cached, still-polling context would
+ * otherwise pick up the workflows of later test classes from the shared database.
  */
 @SpringBootTest
 @TestPropertySource(properties = {
 		"orchestrator.scheduler-enabled=true",
 		"orchestrator.poll-interval-ms=200"
 })
+@org.springframework.test.annotation.DirtiesContext(
+		classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class WorkflowSchedulerIntegrationTest extends AbstractPostgresIntegrationTest {
 
 	@Autowired

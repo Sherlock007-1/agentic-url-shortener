@@ -38,6 +38,9 @@ public class WorkflowRun {
 	@Column(name = "error_message")
 	private String errorMessage;
 
+	@Column(name = "safe_stop_reason")
+	private String safeStopReason;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -78,6 +81,36 @@ public class WorkflowRun {
 		}
 	}
 
+	/** Parks the run in front of a human approval gate. */
+	public void markWaitingForApproval() {
+		this.status = WorkflowStatus.WAITING_FOR_APPROVAL;
+	}
+
+	/** Parks the run until a clarification question is answered. */
+	public void markAwaitingClarification() {
+		this.status = WorkflowStatus.AWAITING_CLARIFICATION;
+	}
+
+	/** A bounded agent/task retry is in progress. */
+	public void markRetrying() {
+		this.status = WorkflowStatus.RETRYING;
+	}
+
+	public void markReplanning() {
+		this.status = WorkflowStatus.REPLANNING;
+	}
+
+	public void markRollingBack() {
+		this.status = WorkflowStatus.ROLLING_BACK;
+	}
+
+	/** Controlled stop after an autonomy boundary was hit; terminal. */
+	public void markSafeStopped(String reason, Instant stoppedAt) {
+		this.status = WorkflowStatus.SAFE_STOPPED;
+		this.safeStopReason = reason;
+		this.completedAt = stoppedAt;
+	}
+
 	public void markCompleted(Instant completedAt) {
 		this.status = WorkflowStatus.COMPLETED;
 		this.completedAt = completedAt;
@@ -107,6 +140,10 @@ public class WorkflowRun {
 
 	public String getErrorMessage() {
 		return errorMessage;
+	}
+
+	public String getSafeStopReason() {
+		return safeStopReason;
 	}
 
 	public Instant getCreatedAt() {

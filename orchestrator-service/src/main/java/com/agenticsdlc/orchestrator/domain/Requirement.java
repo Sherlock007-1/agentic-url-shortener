@@ -17,7 +17,7 @@ public class Requirement {
 	@GeneratedValue
 	private UUID id;
 
-	@Column(name = "text", nullable = false, updatable = false)
+	@Column(name = "text", nullable = false)
 	private String text;
 
 	@Column(name = "created_at", nullable = false, updatable = false)
@@ -30,6 +30,14 @@ public class Requirement {
 	public Requirement(String text, Instant createdAt) {
 		this.text = text;
 		this.createdAt = createdAt;
+	}
+
+	/**
+	 * Replaces the requirement text after a clarification/replan. The previous text
+	 * is not lost: it is persisted on the {@code workflow_replans} lineage row.
+	 */
+	public void updateText(String text) {
+		this.text = text;
 	}
 
 	public UUID getId() {

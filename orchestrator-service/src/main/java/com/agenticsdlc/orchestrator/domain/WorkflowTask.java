@@ -61,6 +61,13 @@ public class WorkflowTask {
 	@Column(name = "completed_at")
 	private Instant completedAt;
 
+	/**
+	 * Number of agent/task attempts executed (bounded by the retry policy). This is
+	 * not the engine's optimistic-locking retry count.
+	 */
+	@Column(name = "attempt_count", nullable = false)
+	private int attemptCount;
+
 	@Version
 	@Column(name = "version", nullable = false)
 	private long version;
@@ -89,6 +96,23 @@ public class WorkflowTask {
 		this.status = TaskStatus.RUNNING;
 		this.inputContext = inputContext;
 		this.startedAt = startedAt;
+	}
+
+	/** Parked in front of an unresolved human approval gate. */
+	public void markWaitingForApproval() {
+		this.status = TaskStatus.WAITING_FOR_APPROVAL;
+	}
+
+	/** A retryable agent failure occurred; another bounded attempt is scheduled. */
+	public void markRetrying(String errorMessage) {
+		this.status = TaskStatus.RETRYING;
+		this.errorMessage = errorMessage;
+	}
+
+	/** Records that another agent/task attempt has started. */
+	public int startAttempt() {
+		this.attemptCount++;
+		return this.attemptCount;
 	}
 
 	public void markCompleted(String outputContext, Instant completedAt) {
@@ -157,5 +181,9 @@ public class WorkflowTask {
 
 	public Instant getCompletedAt() {
 		return completedAt;
+	}
+
+	public int getAttemptCount() {
+		return attemptCount;
 	}
 }

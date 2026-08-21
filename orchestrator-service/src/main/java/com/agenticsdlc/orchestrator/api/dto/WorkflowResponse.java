@@ -8,11 +8,13 @@ import java.util.UUID;
 
 @Schema(name = "WorkflowResponse", description = "Workflow run summary")
 public record WorkflowResponse(UUID workflowId, UUID requirementId, String requirement, WorkflowStatus status,
-		int graphVersion, String errorMessage, Instant createdAt, Instant startedAt, Instant completedAt) {
+		int graphVersion, String errorMessage,
+		@Schema(description = "Why the run was safe-stopped (autonomy boundary, rejection or policy violation)")
+		String safeStopReason, Instant createdAt, Instant startedAt, Instant completedAt) {
 
 	public static WorkflowResponse from(WorkflowRun run, String requirementText) {
 		return new WorkflowResponse(run.getId(), run.getRequirementId(), requirementText, run.getStatus(),
-				run.getCurrentGraphVersion(), run.getErrorMessage(), run.getCreatedAt(), run.getStartedAt(),
-				run.getCompletedAt());
+				run.getCurrentGraphVersion(), run.getErrorMessage(), run.getSafeStopReason(), run.getCreatedAt(),
+				run.getStartedAt(), run.getCompletedAt());
 	}
 }
