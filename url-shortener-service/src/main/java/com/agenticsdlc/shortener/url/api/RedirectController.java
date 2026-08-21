@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -29,14 +30,16 @@ public class RedirectController {
 	}
 
 	@GetMapping("/{shortCode:[A-Za-z0-9]{4,16}}")
-	@Operation(summary = "Redirect to the destination URL")
+	@Operation(summary = "Redirect to the destination URL",
+			description = "A successful redirect records exactly one click event; unknown, disabled and expired codes record nothing.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "302", description = "Redirect to the destination URL", content = @io.swagger.v3.oas.annotations.media.Content),
 			@ApiResponse(responseCode = "404", description = "Unknown short code", content = @io.swagger.v3.oas.annotations.media.Content),
 			@ApiResponse(responseCode = "410", description = "Short URL expired or disabled", content = @io.swagger.v3.oas.annotations.media.Content)
 	})
-	public ResponseEntity<Void> redirect(@PathVariable String shortCode) {
-		String destination = service.resolveDestination(shortCode);
+	public ResponseEntity<Void> redirect(@PathVariable String shortCode,
+			@RequestHeader(name = "Referer", required = false) String referrer) {
+		String destination = service.resolveDestination(shortCode, referrer);
 		return ResponseEntity.status(HttpStatus.FOUND)
 				.location(URI.create(destination))
 				.cacheControl(org.springframework.http.CacheControl.noStore())

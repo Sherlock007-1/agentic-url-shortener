@@ -41,8 +41,17 @@ public class ShortUrlExceptionHandler {
 	}
 
 	/**
-	 * Short-code uniqueness is enforced by the database; a collision therefore
-	 * surfaces as a conflict rather than being retried in this baseline.
+	 * Short-code generation is retried a bounded number of times; when every attempt
+	 * collided the request fails as a conflict the caller may simply repeat.
+	 */
+	@ExceptionHandler(com.agenticsdlc.shortener.url.exception.ShortCodeCollisionException.class)
+	public ProblemDetail handleCollision(com.agenticsdlc.shortener.url.exception.ShortCodeCollisionException ex) {
+		return problem(HttpStatus.CONFLICT, "Could not generate a unique short code", ex.getMessage());
+	}
+
+	/**
+	 * Short-code uniqueness is enforced by the database. Duplicates are retried in
+	 * the service; anything reaching this handler is a different integrity failure.
 	 */
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	public ProblemDetail handleConflict(DataIntegrityViolationException ex) {

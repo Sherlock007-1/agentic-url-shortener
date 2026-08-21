@@ -13,6 +13,7 @@ import com.agenticsdlc.orchestrator.domain.WorkflowTask;
 import com.agenticsdlc.orchestrator.governance.ApprovalGates;
 import com.agenticsdlc.orchestrator.governance.ApprovalService;
 import com.agenticsdlc.orchestrator.governance.BudgetGuard;
+import com.agenticsdlc.orchestrator.governance.ClarificationGateService;
 import com.agenticsdlc.orchestrator.governance.SafeStopService;
 import com.agenticsdlc.orchestrator.repository.AgentExecutionRepository;
 import com.agenticsdlc.orchestrator.repository.DecisionRepository;
@@ -58,6 +59,7 @@ public class WorkflowTransitionService {
 	private final AuditService auditService;
 	private final ContextSerializer contextSerializer;
 	private final ApprovalService approvalService;
+	private final ClarificationGateService clarificationGateService;
 	private final BudgetGuard budgetGuard;
 	private final SafeStopService safeStopService;
 	private final Clock clock;
@@ -66,7 +68,8 @@ public class WorkflowTransitionService {
 			TaskDependencyRepository dependencyRepository, WorkflowGraphVersionRepository graphVersionRepository,
 			AgentExecutionRepository agentExecutionRepository, DecisionRepository decisionRepository,
 			RequirementRepository requirementRepository, AuditService auditService, ContextSerializer contextSerializer,
-			ApprovalService approvalService, BudgetGuard budgetGuard, SafeStopService safeStopService, Clock clock) {
+			ApprovalService approvalService, ClarificationGateService clarificationGateService, BudgetGuard budgetGuard,
+			SafeStopService safeStopService, Clock clock) {
 		this.workflowRunRepository = workflowRunRepository;
 		this.taskRepository = taskRepository;
 		this.dependencyRepository = dependencyRepository;
@@ -77,6 +80,7 @@ public class WorkflowTransitionService {
 		this.auditService = auditService;
 		this.contextSerializer = contextSerializer;
 		this.approvalService = approvalService;
+		this.clarificationGateService = clarificationGateService;
 		this.budgetGuard = budgetGuard;
 		this.safeStopService = safeStopService;
 		this.clock = clock;
@@ -148,6 +152,12 @@ public class WorkflowTransitionService {
 			// Human approval gate: the task is eligible by data, but autonomy stops here.
 			Optional<ApprovalGate> gate = ApprovalGates.gateForTask(task.getTaskKey());
 			if (gate.isPresent() && !approvalService.requireGate(run, gate.get(), task)) {
+				break;
+			}
+
+			// Clarification gate: an ambiguous requirement is questioned, never guessed.
+			if (clarificationGateService.guards(task.getTaskKey())
+					&& !clarificationGateService.requireActionableRequirement(run, requirementText, task)) {
 				break;
 			}
 

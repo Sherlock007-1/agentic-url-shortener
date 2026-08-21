@@ -7,9 +7,13 @@ import org.springframework.stereotype.Component;
 /**
  * Generates random Base62 short codes.
  *
- * <p>Uniqueness is currently enforced by the {@code short_urls.short_code} unique
- * constraint: on the rare event of a collision the insert fails. Collision-safe
- * retry behaviour is deliberately out of scope for this baseline.
+ * <p>The generator never checks the database: uniqueness is owned by the
+ * {@code short_urls.short_code} unique constraint. {@link ShortUrlService} turns a
+ * collision into a bounded regeneration, so this class stays a pure value producer.
+ *
+ * <p>{@link #generate()} is intentionally left overridable so tests can substitute
+ * a deterministic sequence of codes and prove collision handling without relying on
+ * randomness.
  */
 @Component
 public class ShortCodeGenerator {

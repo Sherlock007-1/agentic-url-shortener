@@ -3,11 +3,15 @@ package com.agenticsdlc.shortener.url.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.agenticsdlc.shortener.url.api.dto.CreateShortUrlRequest;
+import com.agenticsdlc.shortener.url.api.dto.ShortUrlAnalyticsResponse;
 import com.agenticsdlc.shortener.url.api.dto.ShortUrlResponse;
 import com.agenticsdlc.shortener.url.config.ShortenerProperties;
 import com.agenticsdlc.shortener.url.domain.ShortUrl;
@@ -18,6 +22,7 @@ import com.agenticsdlc.shortener.url.repository.ShortUrlRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +39,12 @@ class ShortUrlServiceTest {
 	@Mock
 	private ShortUrlRepository repository;
 
+	@Mock
+	private ShortUrlWriter writer;
+
+	@Mock
+	private ClickAnalyticsService clickAnalyticsService;
+
 	/** Deterministic generator stub; no mocking framework needed for a value producer. */
 	private final ShortCodeGenerator codeGenerator =
 			new ShortCodeGenerator(new ShortenerProperties("http://localhost:8081", 7, 2048)) {
@@ -48,19 +59,19 @@ class ShortUrlServiceTest {
 	@BeforeEach
 	void setUp() {
 		ShortenerProperties properties = new ShortenerProperties("http://localhost:8081", 7, 2048);
-		service = new ShortUrlService(repository, codeGenerator, new UrlValidator(properties), properties,
-				Clock.fixed(NOW, ZoneOffset.UTC));
+		service = new ShortUrlService(repository, writer, codeGenerator, new UrlValidator(properties),
+				clickAnalyticsService, properties, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
 	void createStoresValidatedUrlWithGeneratedCode() {
-		when(repository.save(any(ShortUrl.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(writer.insert(any(ShortUrl.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		Instant expiresAt = NOW.plusSeconds(3600);
 		ShortUrlResponse response = service.create(new CreateShortUrlRequest("https://example.com/page", expiresAt));
 
 		ArgumentCaptor<ShortUrl> captor = ArgumentCaptor.forClass(ShortUrl.class);
-		verify(repository).save(captor.capture());
+		verify(writer).insert(captor.capture());
 		ShortUrl saved = captor.getValue();
 		assertThat(saved.getShortCode()).isEqualTo("abc1234");
 		assertThat(saved.getOriginalUrl()).isEqualTo("https://example.com/page");
@@ -77,7 +88,7 @@ class ShortUrlServiceTest {
 	void createRejectsInvalidDestinationUrl() {
 		assertThatThrownBy(() -> service.create(new CreateShortUrlRequest("javascript:alert(1)", null)))
 				.isInstanceOf(InvalidUrlException.class);
-		verify(repository, never()).save(any());
+		verify(writer, never()).insert(any());
 	}
 
 	@Test
@@ -86,15 +97,27 @@ class ShortUrlServiceTest {
 				new CreateShortUrlRequest("https://example.com", NOW.minusSeconds(1))))
 				.isInstanceOf(InvalidUrlException.class)
 				.hasMessageContaining("expiresAt");
-		verify(repository, never()).save(any());
+		verify(writer, never()).insert(any());
 	}
 
 	@Test
 	void resolveReturnsDestinationForActiveUrl() {
-		when(repository.findByShortCode("abc1234"))
-				.thenReturn(Optional.of(new ShortUrl("abc1234", "https://example.com", NOW, null)));
+		ShortUrl shortUrl = new ShortUrl("abc1234", "https://example.com", NOW, null);
+		when(repository.findByShortCode("abc1234")).thenReturn(Optional.of(shortUrl));
 
 		assertThat(service.resolveDestination("abc1234")).isEqualTo("https://example.com");
+
+		verify(clickAnalyticsService).recordClick(eq(shortUrl), eq(NOW), isNull());
+	}
+
+	@Test
+	void resolveRecordsTheReferrerWhenTheBrowserSuppliesOne() {
+		ShortUrl shortUrl = new ShortUrl("abc1234", "https://example.com", NOW, null);
+		when(repository.findByShortCode("abc1234")).thenReturn(Optional.of(shortUrl));
+
+		assertThat(service.resolveDestination("abc1234", "https://news.example/post")).isEqualTo("https://example.com");
+
+		verify(clickAnalyticsService).recordClick(shortUrl, NOW, "https://news.example/post");
 	}
 
 	@Test
@@ -103,6 +126,7 @@ class ShortUrlServiceTest {
 
 		assertThatThrownBy(() -> service.resolveDestination("missing"))
 				.isInstanceOf(ShortUrlNotFoundException.class);
+		verifyNoInteractions(clickAnalyticsService);
 	}
 
 	@Test
@@ -114,6 +138,7 @@ class ShortUrlServiceTest {
 		assertThatThrownBy(() -> service.resolveDestination("expired1"))
 				.isInstanceOf(ShortUrlGoneException.class)
 				.hasMessageContaining("expired");
+		verifyNoInteractions(clickAnalyticsService);
 	}
 
 	@Test
@@ -125,6 +150,7 @@ class ShortUrlServiceTest {
 		assertThatThrownBy(() -> service.resolveDestination("gone1234"))
 				.isInstanceOf(ShortUrlGoneException.class)
 				.hasMessageContaining("disabled");
+		verifyNoInteractions(clickAnalyticsService);
 	}
 
 	@Test
@@ -144,6 +170,27 @@ class ShortUrlServiceTest {
 		when(repository.findByShortCode("missing")).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.getMetadata("missing")).isInstanceOf(ShortUrlNotFoundException.class);
+	}
+
+	@Test
+	void analyticsAreDelegatedForAKnownCode() {
+		ShortUrl shortUrl = new ShortUrl("abc1234", "https://example.com", NOW, null);
+		when(repository.findByShortCode("abc1234")).thenReturn(Optional.of(shortUrl));
+		when(clickAnalyticsService.analytics(shortUrl))
+				.thenReturn(new ShortUrlAnalyticsResponse("abc1234", 2, NOW, List.of()));
+
+		ShortUrlAnalyticsResponse response = service.getAnalytics("abc1234");
+
+		assertThat(response.shortCode()).isEqualTo("abc1234");
+		assertThat(response.totalClicks()).isEqualTo(2);
+	}
+
+	@Test
+	void analyticsFailForUnknownCode() {
+		when(repository.findByShortCode("missing")).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.getAnalytics("missing")).isInstanceOf(ShortUrlNotFoundException.class);
+		verifyNoInteractions(clickAnalyticsService);
 	}
 
 	@Test

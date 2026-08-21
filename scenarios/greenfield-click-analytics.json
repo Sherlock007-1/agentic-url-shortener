@@ -1,0 +1,46 @@
+{
+  "key": "greenfield-click-analytics",
+  "name": "Greenfield: click analytics for shortened URLs",
+  "type": "GREENFIELD",
+  "requirement": "Add click analytics for shortened URLs.",
+  "whyThisType": "The baseline URL shortener had no analytics at all: no table, no entity, no endpoint. The increment adds a new capability rather than changing existing behaviour.",
+  "expectedOrchestrationBehaviour": [
+    "Requirement is unambiguous, so the clarification gate does not trigger.",
+    "requirement-analysis -> codebase-analysis -> planning -> architecture run sequentially.",
+    "PRE_IMPLEMENTATION approval gate blocks the implementation task until a human approves.",
+    "tests, security and documentation run in parallel after implementation.",
+    "validation joins the three parallel branches.",
+    "FINAL approval gate blocks the transition to COMPLETED."
+  ],
+  "expectedAffectedComponents": [
+    "url-shortener-service/src/main/resources/db/migration/V3__click_events.sql",
+    "url-shortener-service/.../domain/ClickEvent.java",
+    "url-shortener-service/.../repository/ClickEventRepository.java",
+    "url-shortener-service/.../service/ClickAnalyticsService.java",
+    "url-shortener-service/.../service/ShortUrlService.java (resolveDestination records the click)",
+    "url-shortener-service/.../api/RedirectController.java (optional Referer header)",
+    "url-shortener-service/.../api/ShortUrlController.java (GET /api/urls/{shortCode}/analytics)",
+    "url-shortener-service/.../api/dto/ShortUrlAnalyticsResponse.java"
+  ],
+  "validationExpectations": [
+    "A successful redirect records exactly one click event.",
+    "Repeated redirects increment totalClicks.",
+    "Unknown (404), disabled (410) and expired (410) redirects record nothing.",
+    "Analytics are read back from the database, not from an in-memory counter.",
+    "All pre-existing URL shortener behaviour still passes."
+  ],
+  "evidence": {
+    "tests": [
+      "url-shortener-service: ClickAnalyticsIntegrationTest (PostgreSQL/Testcontainers, 10 tests)",
+      "url-shortener-service: ShortUrlServiceTest (click recorded / not recorded, analytics delegation)",
+      "url-shortener-service: ShortUrlApiIntegrationTest (baseline behaviour unchanged, analytics path published in OpenAPI)"
+    ],
+    "api": "GET /api/urls/{shortCode}/analytics"
+  },
+  "intentionalBoundaries": [
+    "No IP address, user agent, device fingerprint or geo-location is stored - only the click time and the optional Referer.",
+    "No dashboard, no aggregation service, no time-series store.",
+    "The recent-clicks window is capped at 10 entries.",
+    "Existing shortener migrations are untouched; the feature ships as a new Flyway migration."
+  ]
+}
