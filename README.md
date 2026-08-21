@@ -66,8 +66,29 @@ Destination URLs must be valid absolute `http`/`https` URIs with a host and at m
 characters; unsafe schemes such as `javascript:`, `file:` and `data:` are rejected. This is basic
 input validation, not SSRF or open-redirect protection.
 
+## Orchestrator API (core engine)
+
+| Method | Path | Behaviour |
+| --- | --- | --- |
+| `POST` | `/api/requirements` | Creates requirement + workflow run + persisted graph version 1 (`READY`) |
+| `POST` | `/api/workflows/{id}/start` | Starts execution (idempotent while `RUNNING`, `409` when not startable) |
+| `GET` | `/api/workflows/{id}` | Workflow summary and status |
+| `GET` | `/api/workflows/{id}/graph` | Graph version, tasks, statuses and dependency edges |
+| `GET` | `/api/workflows/{id}/tasks` | Task details including persisted input/output context |
+| `GET` | `/api/workflows/{id}/decisions` | Recorded planning/architecture decisions |
+| `GET` | `/api/workflows/{id}/audit` | Ordered audit history |
+
+The SDLC graph is persisted (not hard-coded control flow):
+`requirement-analysis → codebase-analysis → planning → architecture → implementation`,
+then `tests`, `security` and `documentation` in parallel, joined by `validation`.
+Agents are provider-neutral (`LlmClient`); the bundled implementations are deterministic and
+require no API credentials.
+
 ## Status
 
-Implementation is intentionally incremental. The URL shortener baseline (creation, redirect,
-metadata, soft disable, expiration, Flyway `short_urls` schema) is implemented. Click analytics,
-collision-safe code generation and the orchestration engine are added in subsequent increments.
+Implementation is intentionally incremental. Implemented so far: the URL shortener baseline
+(creation, redirect, metadata, soft disable, expiration) and the orchestration core (persisted DAG,
+parallel execution with join, agent abstraction, cross-stage context, decision lineage, audit trail).
+Approvals, retry/rollback, safe-stop, dynamic replanning, metrics, click analytics and collision-safe
+short-code generation are added in subsequent increments.
+

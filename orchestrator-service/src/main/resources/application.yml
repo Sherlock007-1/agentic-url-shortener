@@ -33,3 +33,11 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+orchestrator:
+  # Bounded worker pool used for parallel task execution (single instance).
+  core-pool-size: 4
+  max-pool-size: 8
+  queue-capacity: 100
+  scheduler-enabled: true
+  poll-interval-ms: 500
