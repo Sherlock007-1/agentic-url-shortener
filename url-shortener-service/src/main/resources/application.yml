@@ -33,3 +33,8 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+shortener:
+  base-url: ${SHORTENER_BASE_URL:http://localhost:8081}
+  code-length: 7
+  max-url-length: 2048

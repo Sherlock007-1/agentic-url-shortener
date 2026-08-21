@@ -53,8 +53,21 @@ Database settings default to local development values and can be overridden with
 variables (`ORCHESTRATOR_DB_URL`, `ORCHESTRATOR_DB_USERNAME`, `ORCHESTRATOR_DB_PASSWORD`,
 `SHORTENER_DB_URL`, `SHORTENER_DB_USERNAME`, `SHORTENER_DB_PASSWORD`). No credentials are committed.
 
+## URL shortener API (baseline)
+
+| Method | Path | Behaviour |
+| --- | --- | --- |
+| `POST` | `/api/urls` | Create a short URL (`400` for an invalid destination URL) |
+| `GET` | `/{shortCode}` | `302` redirect for an active link, `404` unknown, `410` expired/disabled |
+| `GET` | `/api/urls/{shortCode}` | Metadata lookup (`404` unknown) |
+| `DELETE` | `/api/urls/{shortCode}` | Soft disable (`204`, `404` unknown); the row is kept so the code is never reused |
+
+Destination URLs must be valid absolute `http`/`https` URIs with a host and at most 2048
+characters; unsafe schemes such as `javascript:`, `file:` and `data:` are rejected. This is basic
+input validation, not SSRF or open-redirect protection.
+
 ## Status
 
-Implementation is intentionally incremental. This commit contains only the project foundation
-(module layout, configuration, baseline migrations, context-load tests). Orchestration and URL
-shortener behaviour are added in subsequent commits.
+Implementation is intentionally incremental. The URL shortener baseline (creation, redirect,
+metadata, soft disable, expiration, Flyway `short_urls` schema) is implemented. Click analytics,
+collision-safe code generation and the orchestration engine are added in subsequent increments.
